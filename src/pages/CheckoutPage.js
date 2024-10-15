@@ -10,7 +10,6 @@ import { PayPalButtons, PayPalScriptProvider } from '@paypal/react-paypal-js';
 import './CheckoutPage.css';
 import { FaCreditCard, FaPaypal, FaTruck } from 'react-icons/fa';
 
-const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLIC_KEY);
 
 const CheckoutForm = ({
   totalPrice,
@@ -25,7 +24,11 @@ const CheckoutForm = ({
   discount, // Add this line
   shippingAreas, // Pass shipping areas to CheckoutForm
   setSelectedShippingArea,
-    selectedShippingArea // Add this prop
+  selectedShippingArea, // Add this prop
+  stripePromise,
+  paypalClientId,
+  settingsStripe,
+  settingsPaypal
 }) => {
   const stripe = useStripe();
   const elements = useElements();
@@ -33,6 +36,9 @@ const CheckoutForm = ({
   const navigate = useNavigate();
  console.log('discount', discount);
   console.log('applied coupon', isCouponApplied);
+  console.log('settttttttttttttingsstrippppe',settingsStripe);
+  console.log('settttttttttttttingspaypppaal',settingsPaypal);
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setLoading(true);
@@ -121,20 +127,27 @@ const CheckoutForm = ({
       <h4>Payment Method</h4>
       <div className="payment-methods">
         <div className="payment-option">
-          <input
-            type="radio"
-            id="credit-card"
-            name="payment"
-            value="credit-card"
-            required
-            onChange={(e) => setPaymentMethod(e.target.value)}
-          />
-          <label htmlFor="credit-card">
-            <FaCreditCard className="payment-icon" /> Credit Card
-          </label>
-          {paymentMethod === 'credit-card' && <CardElement />}
+         {settingsStripe && settingsStripe.is_enabled && ( // Now checks if settingsStripe is defined and is_enabled is true
+  <>
+    <input
+      type="radio"
+      id="credit-card"
+      name="payment"
+      value="credit-card"
+      required
+      onChange={(e) => setPaymentMethod(e.target.value)}
+    />
+    <label htmlFor="credit-card">
+      <FaCreditCard className="payment-icon" /> Credit Card
+    </label>
+    {paymentMethod === 'credit-card' && <CardElement />}
+  </>
+)}
+
         </div>
         <div className="payment-option">
+                {settingsPaypal && settingsPaypal.is_enabled && ( // Now checks if settingsStripe is defined and is_enabled is true
+  <>
           <input
             type="radio"
             id="paypal"
@@ -188,6 +201,8 @@ const CheckoutForm = ({
               }}
             />
           )}
+            </>
+)}
         </div>
         <div className="payment-option">
           <input
@@ -238,6 +253,48 @@ const totalPrice = (totalPriceBeforeDiscount - discount + parseFloat(shippingCos
   const [loading, setLoading] = useState(false);
   const [isCouponApplied, setIsCouponApplied] = useState(false); 
 
+
+ const [stripePromise, setStripePromise] = useState(null); // Stripe object will be set here
+  const [settingsStripe, setSettingsStripe] = useState(null); // Stripe object will be set here
+    const [settingsPaypal, setSettingsPaypal] = useState(null); // Stripe object will be set here
+
+    const [errorStripe, setErrorStripe] = useState(null);
+    const [paypalClientId, setPaypalClientId] = useState('');
+    useEffect(() => {
+        const fetchStripeApiKey = async () => {
+            try {
+                const response = await axios.get('/api/admin/settings/stripe');
+                 setSettingsStripe(response.data);
+                const apiKey = response.data.api_key;
+                // Dynamically load the Stripe instance using the API key from the backend
+                const stripe = await loadStripe(apiKey);
+                setStripePromise(stripe);
+            } catch (err) {
+                setErrorStripe('Error loading Stripe API Key');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchStripeApiKey();
+    }, []);
+
+useEffect(() => {
+        const fetchPayPalClientId = async () => {
+            try {
+                const response = await axios.get('/api/admin/settings/paypal');
+                setSettingsPaypal(response.data);
+
+                const clientId = response.data.client_id;
+                console.log('paypal', clientId);
+                setPaypalClientId(clientId);
+            } catch (err) {
+                console.error('Error loading PayPal Client ID:', err);
+            }
+        };
+
+        fetchPayPalClientId();
+    }, []);
 
 
 useEffect(() => {
@@ -290,6 +347,10 @@ const orderData = {
 };
 
   console.log('orderData', orderData);
+                  console.log('settingsStripe', settingsStripe);
+                 console.log('settingsPaypal', settingsPaypal);
+
+
 
 const handleApplyCoupon = async () => {
   try {
@@ -320,31 +381,58 @@ const handleApplyCoupon = async () => {
   }
 };
 
-
   return (
     <Elements stripe={stripePromise}>
-      <PayPalScriptProvider options={{ 'client-id': process.env.REACT_APP_PAYPAL_CLIENT_ID }}>
+
         <div className="checkout-container">
           <h2>Checkout</h2>
           <div className="checkout-content">
 
             <div className="checkout-form">
               <h3>Billing Information</h3>
-             <CheckoutForm
-                totalPrice={totalPrice}
-                itemsToDisplay={itemsToDisplay}
-                paymentMethod={paymentMethod}
-                setPaymentMethod={setPaymentMethod}
-                loading={loading}
-                setLoading={setLoading}
-                userEmail={userEmail}
-                orderData={orderData}
-                isCouponApplied={isCouponApplied} // Pass this
-                discount={discount} // Pass this
-                 shippingAreas={shippingAreas} // Pass shipping areas to CheckoutForm
-                setSelectedShippingArea={setSelectedShippingArea} 
-                selectedShippingArea={selectedShippingArea}
-              />
+             {paypalClientId ? (
+          <PayPalScriptProvider options={{ 'client-id': paypalClientId }}>
+            <CheckoutForm
+              totalPrice={totalPrice}
+              itemsToDisplay={itemsToDisplay}
+              paymentMethod={paymentMethod}
+              setPaymentMethod={setPaymentMethod}
+              loading={loading}
+              setLoading={setLoading}
+              userEmail={userEmail}
+              orderData={orderData}
+              isCouponApplied={isCouponApplied}
+              discount={discount}
+              shippingAreas={shippingAreas}
+              setSelectedShippingArea={setSelectedShippingArea}
+              selectedShippingArea={selectedShippingArea}
+              stripePromise={stripePromise}
+              paypalClientId={paypalClientId} // Still pass it, if needed
+              settingsStripe={settingsStripe}
+              settingsPaypal={settingsPaypal}
+            />
+          </PayPalScriptProvider>
+        ) : (
+          <CheckoutForm
+            totalPrice={totalPrice}
+            itemsToDisplay={itemsToDisplay}
+            paymentMethod={paymentMethod}
+            setPaymentMethod={setPaymentMethod}
+            loading={loading}
+            setLoading={setLoading}
+            userEmail={userEmail}
+            orderData={orderData}
+            isCouponApplied={isCouponApplied}
+            discount={discount}
+            shippingAreas={shippingAreas}
+            setSelectedShippingArea={setSelectedShippingArea}
+            selectedShippingArea={selectedShippingArea}
+            stripePromise={stripePromise}
+            settingsStripe={settingsStripe}
+            settingsPaypal={settingsPaypal}
+          />
+        )}
+
             </div>
 
 <div className="cart-summary">
@@ -443,7 +531,6 @@ const handleApplyCoupon = async () => {
 
           </div>
         </div>
-      </PayPalScriptProvider>
     </Elements>
   );
 };
